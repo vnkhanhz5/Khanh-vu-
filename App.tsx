@@ -63,9 +63,11 @@ const App: React.FC = () => {
   const [passwordInput, setPasswordInput] = useState('');
   const [authError, setAuthError] = useState(false);
   const [state, setState] = useState<AppState>(AppState.IDLE);
-  const [originalImage, setOriginalImage] = useState<string | null>(null);
+  const [originalImages, setOriginalImages] = useState<string[]>([]);
+  const [selectedIndices, setSelectedIndices] = useState<number[]>([]);
   const [backgroundImage, setBackgroundImage] = useState<string | null>(null);
-  const [generatedImage, setGeneratedImage] = useState<string | null>(null);
+  const [generatedImages, setGeneratedImages] = useState<string[]>([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
   const [error, setError] = useState<string | null>(null);
   
   const [options, setOptions] = useState<GenerationOptions>({
@@ -82,7 +84,30 @@ const App: React.FC = () => {
 
   useEffect(() => {
     checkApiKey();
+    window.addEventListener('paste', handlePaste);
+    return () => window.removeEventListener('paste', handlePaste);
   }, []);
+
+  const handlePaste = (e: Event) => {
+    const clipboardEvent = e as ClipboardEvent;
+    const items = clipboardEvent.clipboardData?.items;
+    if (!items) return;
+
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.indexOf('image') !== -1) {
+        const file = items[i].getAsFile();
+        if (file) {
+          const reader = new FileReader();
+          reader.onload = (event) => {
+            const result = event.target?.result as string;
+            setOriginalImages(prev => [...prev, result]);
+            setError(null);
+          };
+          reader.readAsDataURL(file);
+        }
+      }
+    }
+  };
 
   const checkApiKey = async () => {
     // @ts-ignore
@@ -99,17 +124,41 @@ const App: React.FC = () => {
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        setOriginalImage(event.target?.result as string);
-        setGeneratedImage(null);
-        setError(null);
-        setState(AppState.IDLE);
-      };
-      reader.readAsDataURL(file);
+    const files = e.target.files;
+    if (files) {
+      const newImages: string[] = [];
+      let loaded = 0;
+      
+      const fileList = Array.from(files) as File[];
+      fileList.forEach(file => {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          newImages.push(event.target?.result as string);
+          loaded++;
+          if (loaded === fileList.length) {
+            setOriginalImages(prev => {
+              const updated = [...prev, ...newImages];
+              // Auto-select new images if it's the first upload
+              if (prev.length === 0) {
+                setSelectedIndices(newImages.map((_, i) => i));
+              }
+              return updated;
+            });
+            setError(null);
+            setState(AppState.IDLE);
+          }
+        };
+        reader.readAsDataURL(file);
+      });
     }
+  };
+
+  const toggleSelection = (idx: number) => {
+    setSelectedIndices(prev => 
+      prev.includes(idx) 
+        ? prev.filter(i => i !== idx) 
+        : [...prev, idx]
+    );
   };
 
   const handleBackgroundUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -118,7 +167,7 @@ const App: React.FC = () => {
       const reader = new FileReader();
       reader.onload = (event) => {
         setBackgroundImage(event.target?.result as string);
-        setGeneratedImage(null);
+        setGeneratedImages([]);
         setError(null);
         setState(AppState.IDLE);
       };
@@ -127,21 +176,54 @@ const App: React.FC = () => {
   };
 
   const handleGenerate = async () => {
-    if (!originalImage) return;
+    if (originalImages.length === 0) return;
     
-    setState(AppState.GENERATING);
+    const targetIndices = selectedIndices.length > 0 ? selectedIndices : [0];
+    const isComposition = targetIndices.length > 1;
+    
+    setState(isComposition ? AppState.GENERATING : AppState.GENERATING); // Using GENERATING for both for now, but logic differs
     setError(null);
     
     try {
-      const mimeType = originalImage.split(';')[0].split(':')[1];
       const bgMimeType = backgroundImage ? backgroundImage.split(';')[0].split(':')[1] : undefined;
+
+      if (isComposition) {
+        // Compose multiple products into one scene
+        const selectedImages = targetIndices.map(i => originalImages[i]);
+        const mimeTypes = selectedImages.map(img => img.split(';')[0].split(':')[1]);
+        
+        const result = await transformProductImage(selectedImages, mimeTypes, {
+          ...options,
+          backgroundImage: backgroundImage || undefined,
+          backgroundImageMimeType: bgMimeType,
+        });
+        
+        setGeneratedImages([result]);
+        setCurrentIndex(0);
+      } else {
+        // Single product or batch (if we wanted batch, but user asked for selection)
+        // For now, if multiple selected, we compose. If one selected, we insert one.
+        // If they want batch, they can do it one by one or we can add a batch mode.
+        // The user request says "choose one or more products to place into the scene".
+        // This implies composition when "more" are chosen.
+        
+        const results: string[] = [];
+        for (let i = 0; i < targetIndices.length; i++) {
+          const idx = targetIndices[i];
+          const img = originalImages[idx];
+          const mimeType = img.split(';')[0].split(':')[1];
+          
+          const result = await transformProductImage(img, mimeType, {
+            ...options,
+            backgroundImage: backgroundImage || undefined,
+            backgroundImageMimeType: bgMimeType,
+          });
+          results.push(result);
+        }
+        setGeneratedImages(results);
+        setCurrentIndex(0);
+      }
       
-      const result = await transformProductImage(originalImage, mimeType, {
-        ...options,
-        backgroundImage: backgroundImage || undefined,
-        backgroundImageMimeType: bgMimeType,
-      });
-      setGeneratedImage(result);
       setState(AppState.SUCCESS);
     } catch (err: any) {
       console.error(err);
@@ -155,10 +237,11 @@ const App: React.FC = () => {
   };
 
   const downloadImage = () => {
-    if (!generatedImage) return;
+    const img = generatedImages[currentIndex];
+    if (!img) return;
     const link = document.createElement('a');
-    link.href = generatedImage;
-    link.download = `studio-product-${Date.now()}.png`;
+    link.href = img;
+    link.download = `studio-product-${currentIndex}-${Date.now()}.png`;
     link.click();
   };
 
@@ -254,10 +337,13 @@ const App: React.FC = () => {
           {/* Upload Section */}
           <section className="flex flex-col gap-6">
             <div>
-              <label className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold mb-3 block">Product Photo (White BG)</label>
+              <div className="flex items-center justify-between mb-3">
+                <label className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold block">Product Photos (White BG)</label>
+                <span className="text-[9px] text-zinc-600 font-mono">Supports Paste</span>
+              </div>
               <div 
                 className={`relative group cursor-pointer border-2 border-dashed rounded-2xl transition-all duration-300 ${
-                  originalImage ? 'border-emerald-500/50 bg-emerald-500/5' : 'border-white/10 hover:border-white/20 hover:bg-white/5'
+                  originalImages.length > 0 ? 'border-emerald-500/50 bg-emerald-500/5' : 'border-white/10 hover:border-white/20 hover:bg-white/5'
                 }`}
                 onClick={() => document.getElementById('file-upload')?.click()}
               >
@@ -266,14 +352,52 @@ const App: React.FC = () => {
                   type="file" 
                   className="hidden" 
                   accept="image/*" 
+                  multiple
                   onChange={handleFileUpload}
                 />
                 <div className="p-6 flex flex-col items-center text-center gap-2">
-                  {originalImage ? (
-                    <div className="relative w-full aspect-square rounded-lg overflow-hidden border border-white/10">
-                      <img src={originalImage} className="w-full h-full object-cover" alt="Original" />
-                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                        <RefreshCw className="w-6 h-6 text-white" />
+                  {originalImages.length > 0 ? (
+                    <div className="grid grid-cols-3 gap-2 w-full">
+                      {originalImages.map((img, idx) => (
+                        <div 
+                          key={idx} 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleSelection(idx);
+                          }}
+                          className={`aspect-square rounded-md overflow-hidden border-2 relative group/item transition-all ${
+                            selectedIndices.includes(idx) ? 'border-emerald-500' : 'border-white/10'
+                          }`}
+                        >
+                          <img src={img} className="w-full h-full object-cover" alt={`Upload ${idx}`} />
+                          
+                          {/* Selection Checkmark */}
+                          {selectedIndices.includes(idx) && (
+                            <div className="absolute top-1 right-1 bg-emerald-500 rounded-full p-0.5">
+                              <CheckCircle2 className="w-3 h-3 text-black" />
+                            </div>
+                          )}
+
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setOriginalImages(prev => prev.filter((_, i) => i !== idx));
+                              setSelectedIndices(prev => prev.filter(i => i !== idx).map(i => i > idx ? i - 1 : i));
+                            }}
+                            className="absolute inset-0 bg-red-500/80 opacity-0 group-hover/item:opacity-100 transition-opacity flex items-center justify-center"
+                          >
+                            <RefreshCw className="w-4 h-4 text-white rotate-45" />
+                          </button>
+                        </div>
+                      ))}
+                      <div 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          document.getElementById('file-upload')?.click();
+                        }}
+                        className="aspect-square rounded-md border border-white/10 border-dashed flex items-center justify-center hover:bg-white/5 transition-colors cursor-pointer"
+                      >
+                        <Upload className="w-4 h-4 text-zinc-500" />
                       </div>
                     </div>
                   ) : (
@@ -281,7 +405,7 @@ const App: React.FC = () => {
                       <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center group-hover:scale-110 transition-transform">
                         <Upload className="w-5 h-5 text-zinc-400" />
                       </div>
-                      <p className="text-[11px] text-zinc-400">Upload product photo</p>
+                      <p className="text-[11px] text-zinc-400">Upload or paste product photos</p>
                     </>
                   )}
                 </div>
@@ -518,31 +642,31 @@ const App: React.FC = () => {
           {/* Action Button */}
           <button
             onClick={handleGenerate}
-            disabled={!originalImage || state === AppState.GENERATING || state === AppState.NEEDS_KEY}
+            disabled={selectedIndices.length === 0 || state === AppState.GENERATING || state === AppState.BATCH_GENERATING || state === AppState.NEEDS_KEY}
             className={`mt-auto w-full py-4 rounded-2xl flex items-center justify-center gap-3 font-bold text-sm transition-all shadow-xl ${
-              !originalImage || state === AppState.GENERATING || state === AppState.NEEDS_KEY
+              selectedIndices.length === 0 || state === AppState.GENERATING || state === AppState.BATCH_GENERATING || state === AppState.NEEDS_KEY
                 ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
                 : 'bg-emerald-500 text-black hover:bg-emerald-400 active:scale-[0.98] shadow-emerald-500/20'
             }`}
           >
-            {state === AppState.GENERATING ? (
+            {state === AppState.GENERATING || state === AppState.BATCH_GENERATING ? (
               <>
                 <RefreshCw className="w-5 h-5 animate-spin" />
-                Generating Studio Shot...
+                {selectedIndices.length > 1 ? 'Composing Scene...' : 'Generating Studio Shot...'}
               </>
             ) : (
               <>
                 <Zap className="w-5 h-5 fill-current" />
-                Transform to Studio
+                {selectedIndices.length > 1 ? `Compose Scene (${selectedIndices.length})` : 'Transform to Studio'}
               </>
             )}
           </button>
         </aside>
 
         {/* Main Preview Area */}
-        <div className="flex-1 bg-[#050505] relative overflow-hidden flex items-center justify-center p-12">
+        <div className="flex-1 bg-[#050505] relative overflow-hidden flex flex-col items-center justify-center p-12">
           <AnimatePresence mode="wait">
-            {!originalImage ? (
+            {originalImages.length === 0 ? (
               <motion.div 
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -555,7 +679,7 @@ const App: React.FC = () => {
                 <div>
                   <h2 className="text-2xl font-bold mb-2">Ready to transform?</h2>
                   <p className="text-zinc-500 text-sm leading-relaxed">
-                    Upload a product photo taken with your phone, and we'll turn it into a professional studio masterpiece.
+                    Upload or paste product photos taken with your phone, and we'll turn them into professional studio masterpieces.
                   </p>
                 </div>
                 <button 
@@ -576,34 +700,58 @@ const App: React.FC = () => {
                   <div className="absolute inset-0 opacity-20" style={{ backgroundImage: 'radial-gradient(#333 1px, transparent 1px)', backgroundSize: '24px 24px' }} />
                   
                   <div className="absolute inset-0 flex items-center justify-center p-8">
-                    {state === AppState.GENERATING ? (
+                    {state === AppState.GENERATING || state === AppState.BATCH_GENERATING ? (
                       <div className="flex flex-col items-center gap-4">
                         <div className="relative">
                           <div className="w-16 h-16 border-4 border-emerald-500/20 border-t-emerald-500 rounded-full animate-spin" />
                           <Sparkles className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-6 h-6 text-emerald-500" />
                         </div>
-                        <p className="text-emerald-500 font-mono text-xs tracking-widest uppercase animate-pulse">Processing Lighting & Shadows</p>
+                        <p className="text-emerald-500 font-mono text-xs tracking-widest uppercase animate-pulse">
+                          {state === AppState.BATCH_GENERATING ? `Processing Item ${currentIndex + 1}/${originalImages.length}` : 'Processing Lighting & Shadows'}
+                        </p>
                       </div>
-                    ) : generatedImage ? (
+                    ) : generatedImages.length > 0 ? (
                       <motion.img 
+                        key={currentIndex}
                         initial={{ scale: 0.95, opacity: 0 }}
                         animate={{ scale: 1, opacity: 1 }}
-                        src={generatedImage} 
+                        src={generatedImages[currentIndex]} 
                         className="max-w-full max-h-full object-contain shadow-2xl rounded-lg"
                         alt="Generated"
                       />
                     ) : (
                       <img 
-                        src={originalImage} 
+                        src={originalImages[currentIndex]} 
                         className="max-w-full max-h-full object-contain opacity-50 grayscale blur-sm"
                         alt="Original Preview"
                       />
                     )}
                   </div>
 
+                  {/* Navigation for multiple results */}
+                  {generatedImages.length > 1 && (
+                    <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-4 bg-black/60 backdrop-blur-md p-2 rounded-2xl border border-white/10">
+                      <button 
+                        onClick={() => setCurrentIndex(prev => (prev - 1 + generatedImages.length) % generatedImages.length)}
+                        className="p-2 hover:bg-white/10 rounded-xl transition-colors"
+                      >
+                        <ChevronRight className="w-5 h-5 rotate-180" />
+                      </button>
+                      <span className="text-[10px] font-bold font-mono text-zinc-400">
+                        {currentIndex + 1} / {generatedImages.length}
+                      </span>
+                      <button 
+                        onClick={() => setCurrentIndex(prev => (prev + 1) % generatedImages.length)}
+                        className="p-2 hover:bg-white/10 rounded-xl transition-colors"
+                      >
+                        <ChevronRight className="w-5 h-5" />
+                      </button>
+                    </div>
+                  )}
+
                   {/* Status Badges */}
                   <div className="absolute top-6 left-6 flex gap-2">
-                    {generatedImage && (
+                    {generatedImages.length > 0 && (
                       <div className="px-3 py-1 bg-emerald-500/10 border border-emerald-500/20 rounded-full flex items-center gap-2">
                         <CheckCircle2 className="w-3 h-3 text-emerald-500" />
                         <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-wider">Studio Enhanced</span>
@@ -616,7 +764,7 @@ const App: React.FC = () => {
                   </div>
 
                   {/* Actions */}
-                  {generatedImage && state !== AppState.GENERATING && (
+                  {generatedImages.length > 0 && state !== AppState.GENERATING && state !== AppState.BATCH_GENERATING && (
                     <div className="absolute bottom-6 right-6 flex gap-3">
                       <button 
                         onClick={downloadImage}
