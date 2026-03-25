@@ -14,10 +14,12 @@ import {
   Sparkles,
   Sun,
   Lock,
-  ArrowRight
+  ArrowRight,
+  Layers,
+  Box
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { AppState, AspectRatio, ImageSize, GenerationOptions, LightDirection } from './types';
+import { AppState, AspectRatio, ImageSize, GenerationOptions, LightDirection, SurfaceType, HorizonStyle } from './types';
 import { transformProductImage } from './utils/geminiService';
 
 const ASPECT_RATIOS: { label: string; value: AspectRatio }[] = [
@@ -43,12 +45,26 @@ const LIGHT_DIRECTIONS: { label: string; value: LightDirection; icon: string }[]
   { label: 'Right', value: 'right', icon: '➡️' },
 ];
 
+const SURFACE_TYPES: { label: string; value: SurfaceType }[] = [
+  { label: 'Matte', value: 'matte' },
+  { label: 'Wood', value: 'wood' },
+  { label: 'Stone', value: 'stone' },
+  { label: 'Ceramic', value: 'ceramic' },
+  { label: 'Solid', value: 'solid' },
+];
+
+const HORIZON_STYLES: { label: string; value: HorizonStyle }[] = [
+  { label: 'Seamless', value: 'seamless' },
+  { label: 'Horizon Line', value: 'horizon-line' },
+];
+
 const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [passwordInput, setPasswordInput] = useState('');
   const [authError, setAuthError] = useState(false);
   const [state, setState] = useState<AppState>(AppState.IDLE);
   const [originalImage, setOriginalImage] = useState<string | null>(null);
+  const [backgroundImage, setBackgroundImage] = useState<string | null>(null);
   const [generatedImage, setGeneratedImage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   
@@ -60,6 +76,8 @@ const App: React.FC = () => {
     customPrompt: '',
     lightDirection: 'top-left',
     showShadow: true,
+    surfaceType: 'matte',
+    horizonStyle: 'seamless',
   });
 
   useEffect(() => {
@@ -94,6 +112,20 @@ const App: React.FC = () => {
     }
   };
 
+  const handleBackgroundUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        setBackgroundImage(event.target?.result as string);
+        setGeneratedImage(null);
+        setError(null);
+        setState(AppState.IDLE);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   const handleGenerate = async () => {
     if (!originalImage) return;
     
@@ -102,7 +134,13 @@ const App: React.FC = () => {
     
     try {
       const mimeType = originalImage.split(';')[0].split(':')[1];
-      const result = await transformProductImage(originalImage, mimeType, options);
+      const bgMimeType = backgroundImage ? backgroundImage.split(';')[0].split(':')[1] : undefined;
+      
+      const result = await transformProductImage(originalImage, mimeType, {
+        ...options,
+        backgroundImage: backgroundImage || undefined,
+        backgroundImageMimeType: bgMimeType,
+      });
       setGeneratedImage(result);
       setState(AppState.SUCCESS);
     } catch (err: any) {
@@ -214,37 +252,83 @@ const App: React.FC = () => {
         {/* Sidebar Controls */}
         <aside className="w-80 border-r border-white/5 bg-[#0d0d0d] overflow-y-auto p-6 flex flex-col gap-8 custom-scrollbar">
           {/* Upload Section */}
-          <section>
-            <label className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold mb-4 block">Source Image</label>
-            <div 
-              className={`relative group cursor-pointer border-2 border-dashed rounded-2xl transition-all duration-300 ${
-                originalImage ? 'border-emerald-500/50 bg-emerald-500/5' : 'border-white/10 hover:border-white/20 hover:bg-white/5'
-              }`}
-              onClick={() => document.getElementById('file-upload')?.click()}
-            >
-              <input 
-                id="file-upload" 
-                type="file" 
-                className="hidden" 
-                accept="image/*" 
-                onChange={handleFileUpload}
-              />
-              <div className="p-8 flex flex-col items-center text-center gap-3">
-                {originalImage ? (
-                  <div className="relative w-full aspect-square rounded-lg overflow-hidden border border-white/10">
-                    <img src={originalImage} className="w-full h-full object-cover" alt="Original" />
-                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                      <RefreshCw className="w-6 h-6 text-white" />
+          <section className="flex flex-col gap-6">
+            <div>
+              <label className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold mb-3 block">Product Photo (White BG)</label>
+              <div 
+                className={`relative group cursor-pointer border-2 border-dashed rounded-2xl transition-all duration-300 ${
+                  originalImage ? 'border-emerald-500/50 bg-emerald-500/5' : 'border-white/10 hover:border-white/20 hover:bg-white/5'
+                }`}
+                onClick={() => document.getElementById('file-upload')?.click()}
+              >
+                <input 
+                  id="file-upload" 
+                  type="file" 
+                  className="hidden" 
+                  accept="image/*" 
+                  onChange={handleFileUpload}
+                />
+                <div className="p-6 flex flex-col items-center text-center gap-2">
+                  {originalImage ? (
+                    <div className="relative w-full aspect-square rounded-lg overflow-hidden border border-white/10">
+                      <img src={originalImage} className="w-full h-full object-cover" alt="Original" />
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                        <RefreshCw className="w-6 h-6 text-white" />
+                      </div>
                     </div>
-                  </div>
-                ) : (
-                  <>
-                    <div className="w-12 h-12 rounded-xl bg-white/5 flex items-center justify-center group-hover:scale-110 transition-transform">
-                      <Upload className="w-6 h-6 text-zinc-400" />
+                  ) : (
+                    <>
+                      <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center group-hover:scale-110 transition-transform">
+                        <Upload className="w-5 h-5 text-zinc-400" />
+                      </div>
+                      <p className="text-[11px] text-zinc-400">Upload product photo</p>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <label className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold mb-3 block">Background Scene (Optional)</label>
+              <div 
+                className={`relative group cursor-pointer border-2 border-dashed rounded-2xl transition-all duration-300 ${
+                  backgroundImage ? 'border-emerald-500/50 bg-emerald-500/5' : 'border-white/10 hover:border-white/20 hover:bg-white/5'
+                }`}
+                onClick={() => document.getElementById('bg-upload')?.click()}
+              >
+                <input 
+                  id="bg-upload" 
+                  type="file" 
+                  className="hidden" 
+                  accept="image/*" 
+                  onChange={handleBackgroundUpload}
+                />
+                <div className="p-6 flex flex-col items-center text-center gap-2">
+                  {backgroundImage ? (
+                    <div className="relative w-full aspect-video rounded-lg overflow-hidden border border-white/10">
+                      <img src={backgroundImage} className="w-full h-full object-cover" alt="Background" />
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                        <RefreshCw className="w-6 h-6 text-white" />
+                      </div>
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setBackgroundImage(null);
+                        }}
+                        className="absolute top-2 right-2 p-1 bg-black/60 rounded-md hover:bg-red-500/80 transition-colors"
+                      >
+                        <RefreshCw className="w-3 h-3 text-white rotate-45" />
+                      </button>
                     </div>
-                    <p className="text-sm text-zinc-400">Click or drag to upload product photo</p>
-                  </>
-                )}
+                  ) : (
+                    <>
+                      <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center group-hover:scale-110 transition-transform">
+                        <ImageIcon className="w-5 h-5 text-zinc-400" />
+                      </div>
+                      <p className="text-[11px] text-zinc-400">Upload background scene</p>
+                    </>
+                  )}
+                </div>
               </div>
             </div>
           </section>
@@ -301,6 +385,48 @@ const App: React.FC = () => {
                 </button>
               </div>
             )}
+          </section>
+
+          {/* Surface & Horizon Section */}
+          <section className="flex flex-col gap-4">
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold block">Surface & Perspective</label>
+              <Box className="w-3 h-3 text-zinc-500" />
+            </div>
+            
+            <div className="flex flex-col gap-3">
+              <div className="flex flex-wrap gap-1.5">
+                {SURFACE_TYPES.map((surface) => (
+                  <button
+                    key={surface.value}
+                    onClick={() => setOptions(prev => ({ ...prev, surfaceType: surface.value }))}
+                    className={`px-2.5 py-1.5 rounded-lg border text-[10px] font-medium transition-all ${
+                      options.surfaceType === surface.value 
+                        ? 'border-emerald-500 bg-emerald-500/10 text-emerald-400' 
+                        : 'border-white/5 bg-white/5 text-zinc-400 hover:bg-white/10'
+                    }`}
+                  >
+                    {surface.label}
+                  </button>
+                ))}
+              </div>
+              
+              <div className="grid grid-cols-2 gap-2">
+                {HORIZON_STYLES.map((style) => (
+                  <button
+                    key={style.value}
+                    onClick={() => setOptions(prev => ({ ...prev, horizonStyle: style.value }))}
+                    className={`px-3 py-2 rounded-lg border text-[10px] font-medium transition-all ${
+                      options.horizonStyle === style.value 
+                        ? 'border-emerald-500 bg-emerald-500/10 text-emerald-400' 
+                        : 'border-white/5 bg-white/5 text-zinc-400 hover:bg-white/10'
+                    }`}
+                  >
+                    {style.label}
+                  </button>
+                ))}
+              </div>
+            </div>
           </section>
 
           {/* Light Direction Section */}

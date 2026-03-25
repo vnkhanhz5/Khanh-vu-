@@ -19,6 +19,9 @@ export type AspectRatio = "1:1" | "3:4" | "4:3" | "9:16" | "16:9";
 export type ImageSize = "1K" | "2K" | "4K";
 export type LightDirection = "top-left" | "top-right" | "top" | "left" | "right" | "front";
 
+export type SurfaceType = 'matte' | 'wood' | 'stone' | 'ceramic' | 'solid';
+export type HorizonStyle = 'seamless' | 'horizon-line';
+
 export interface GenerationOptions {
   aspectRatio: AspectRatio;
   imageSize: ImageSize;
@@ -27,4 +30,8 @@ export interface GenerationOptions {
   customPrompt: string;
   lightDirection: LightDirection;
   showShadow: boolean;
+  surfaceType: SurfaceType;
+  horizonStyle: HorizonStyle;
+  backgroundImage?: string;
+  backgroundImageMimeType?: string;
 }
