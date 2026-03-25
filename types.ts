@@ -4,7 +4,8 @@ export enum AppState {
   GENERATING = 'GENERATING',
   SUCCESS = 'SUCCESS',
   ERROR = 'ERROR',
-  NEEDS_KEY = 'NEEDS_KEY'
+  NEEDS_KEY = 'NEEDS_KEY',
+  NEEDS_AUTH = 'NEEDS_AUTH'
 }
 
 export interface Rect {

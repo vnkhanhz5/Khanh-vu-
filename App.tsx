@@ -12,7 +12,9 @@ import {
   CheckCircle2,
   ChevronRight,
   Sparkles,
-  Sun
+  Sun,
+  Lock,
+  ArrowRight
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AppState, AspectRatio, ImageSize, GenerationOptions, LightDirection } from './types';
@@ -42,6 +44,9 @@ const LIGHT_DIRECTIONS: { label: string; value: LightDirection; icon: string }[]
 ];
 
 const App: React.FC = () => {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [passwordInput, setPasswordInput] = useState('');
+  const [authError, setAuthError] = useState(false);
   const [state, setState] = useState<AppState>(AppState.IDLE);
   const [originalImage, setOriginalImage] = useState<string | null>(null);
   const [generatedImage, setGeneratedImage] = useState<string | null>(null);
@@ -118,6 +123,67 @@ const App: React.FC = () => {
     link.download = `studio-product-${Date.now()}.png`;
     link.click();
   };
+
+  const handleAuth = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (passwordInput === 'hanhTAY') {
+      setIsAuthenticated(true);
+      setAuthError(false);
+    } else {
+      setAuthError(true);
+      setPasswordInput('');
+    }
+  };
+
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-[#0a0a0a] text-zinc-100 font-sans flex items-center justify-center p-6">
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-[#111] border border-white/10 rounded-[32px] p-10 max-w-md w-full text-center shadow-2xl"
+        >
+          <div className="w-20 h-20 bg-emerald-500/10 rounded-3xl flex items-center justify-center mx-auto mb-8">
+            <Lock className="w-10 h-10 text-emerald-500" />
+          </div>
+          <h2 className="text-2xl font-bold mb-4">Studio Pro Security</h2>
+          <p className="text-zinc-400 text-sm leading-relaxed mb-8">
+            Please enter the access password to use the professional product enhancer.
+          </p>
+          <form onSubmit={handleAuth} className="space-y-4">
+            <div className="relative">
+              <input 
+                type="password" 
+                value={passwordInput}
+                onChange={(e) => setPasswordInput(e.target.value)}
+                placeholder="Enter password"
+                className={`w-full py-4 px-6 bg-white/5 border rounded-2xl outline-none transition-all text-center ${
+                  authError ? 'border-red-500/50 focus:border-red-500' : 'border-white/10 focus:border-emerald-500/50'
+                }`}
+                autoFocus
+              />
+              {authError && (
+                <motion.p 
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="text-red-500 text-[10px] mt-2 font-bold uppercase tracking-widest"
+                >
+                  Incorrect Password
+                </motion.p>
+              )}
+            </div>
+            <button 
+              type="submit"
+              className="w-full py-4 bg-emerald-500 text-black rounded-2xl font-bold hover:bg-emerald-400 transition-all flex items-center justify-center gap-2 group"
+            >
+              Access Studio
+              <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+            </button>
+          </form>
+        </motion.div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-zinc-100 font-sans selection:bg-emerald-500/30">
