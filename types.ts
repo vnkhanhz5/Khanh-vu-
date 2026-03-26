@@ -23,6 +23,8 @@ export type LightDirection = "top-left" | "top-right" | "top" | "left" | "right"
 export type SurfaceType = 'matte' | 'wood' | 'stone' | 'ceramic' | 'solid';
 export type HorizonStyle = 'seamless' | 'horizon-line';
 
+export type StyleType = 'caraway' | 'our-place' | 'neutral-premium';
+
 export interface GenerationOptions {
   aspectRatio: AspectRatio;
   imageSize: ImageSize;
@@ -33,6 +35,7 @@ export interface GenerationOptions {
   showShadow: boolean;
   surfaceType: SurfaceType;
   horizonStyle: HorizonStyle;
+  stylePreset: StyleType;
   backgroundImage?: string;
   backgroundImageMimeType?: string;
 }

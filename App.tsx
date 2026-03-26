@@ -19,7 +19,7 @@ import {
   Box
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { AppState, AspectRatio, ImageSize, GenerationOptions, LightDirection, SurfaceType, HorizonStyle } from './types';
+import { AppState, AspectRatio, ImageSize, GenerationOptions, LightDirection, SurfaceType, HorizonStyle, StyleType } from './types';
 import { transformProductImage } from './utils/geminiService';
 
 const ASPECT_RATIOS: { label: string; value: AspectRatio }[] = [
@@ -58,6 +58,12 @@ const HORIZON_STYLES: { label: string; value: HorizonStyle }[] = [
   { label: 'Horizon Line', value: 'horizon-line' },
 ];
 
+const STYLE_PRESETS: { label: string; value: StyleType; description: string }[] = [
+  { label: 'Caraway', value: 'caraway', description: 'Airy, minimal, pastel, editorial' },
+  { label: 'Our Place', value: 'our-place', description: 'Warm, lifestyle, soft realism' },
+  { label: 'Neutral', value: 'neutral-premium', description: 'Clean modern studio look' },
+];
+
 const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [passwordInput, setPasswordInput] = useState('');
@@ -80,6 +86,7 @@ const App: React.FC = () => {
     showShadow: true,
     surfaceType: 'matte',
     horizonStyle: 'seamless',
+    stylePreset: 'neutral-premium',
   });
 
   useEffect(() => {
@@ -454,6 +461,31 @@ const App: React.FC = () => {
                   )}
                 </div>
               </div>
+            </div>
+          </section>
+
+          {/* Style Preset Section */}
+          <section className="flex flex-col gap-4">
+            <label className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold block">Aesthetic Style</label>
+            <div className="flex flex-col gap-2">
+              {STYLE_PRESETS.map((style) => (
+                <button
+                  key={style.value}
+                  onClick={() => setOptions(prev => ({ ...prev, stylePreset: style.value }))}
+                  className={`p-3 rounded-xl border text-left transition-all ${
+                    options.stylePreset === style.value 
+                      ? 'border-emerald-500 bg-emerald-500/10' 
+                      : 'border-white/5 bg-white/5 hover:bg-white/10'
+                  }`}
+                >
+                  <div className={`text-xs font-bold mb-0.5 ${options.stylePreset === style.value ? 'text-emerald-400' : 'text-zinc-300'}`}>
+                    {style.label}
+                  </div>
+                  <div className="text-[10px] text-zinc-500 leading-tight">
+                    {style.description}
+                  </div>
+                </button>
+              ))}
             </div>
           </section>
 
