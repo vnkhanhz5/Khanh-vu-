@@ -20,7 +20,14 @@ export async function transformProductImage(
   mimeType: string | string[],
   options: GenerationOptions
 ) {
-  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  const ai = new GoogleGenAI({ 
+    apiKey: process.env.GEMINI_API_KEY,
+    httpOptions: {
+      headers: {
+        'User-Agent': 'aistudio-build',
+      }
+    }
+  });
   
   const images = Array.isArray(base64Images) ? base64Images : [base64Images];
   const mimeTypes = Array.isArray(mimeType) ? mimeType : [mimeType];
@@ -97,7 +104,7 @@ If generation result shows wrong perspective, floating objects, or color shifts,
   parts.push({ text: prompt });
 
   const response = await ai.models.generateContent({
-    model: 'gemini-3.1-flash-image-preview',
+    model: 'gemini-3.1-flash-image',
     contents: {
       parts: parts,
     },
